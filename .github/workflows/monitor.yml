@@ -1,0 +1,47 @@
+name: M1号 在庫監視
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # 5分ごと（GitHubの混雑時は遅れることがあります）
+  workflow_dispatch:         # Actions画面から手動実行もできる
+
+permissions:
+  contents: write            # state.json をコミットするため
+
+concurrency:
+  group: monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 監視を実行
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: python monitor.py
+
+      - name: 状態を保存
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          [ -f mail_ready ] && git add mail_ready
+          if git diff --cached --quiet; then
+            echo "変更なし"
+          else
+            git commit -m "update state"
+            git push
+          fi
